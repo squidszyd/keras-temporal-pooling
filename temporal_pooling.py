@@ -11,12 +11,6 @@
 
     [Reference]
         $KERAS_ROOT/keras/layers/pooling.py
-
-    [TODO]
-        1.  Temporal average pooling            [✓]
-        2.  Temporal max pooling                [✓]
-        3.  Temporal global average pooling     [NOT_IMPLEMENTED]
-        4.  Temporal global max pooling         [NOT_IMPLEMENTED]
 """
 
 from __future__ import absolute_import
@@ -135,19 +129,19 @@ class TemporalAveragePooling2D(_TemporalPooling2D):
 
     def __init__(self, pool_size=(2, 2), strides=None, border_mode='valid',
                  dim_ordering='default', spatial_pool_mode = 'avg', **kwargs):
-		self.spatial_pool_mode = spatial_pool_mode
+        self.spatial_pool_mode = spatial_pool_mode
         super(TemporalAveragePooling2D, self).__init__(pool_size, strides,
                                                        border_mode, dim_ordering,
                                                        **kwargs)
 
     def _pooling_function(self, inputs, pool_size, strides, 
                           border_mode, dim_ordering):
-		# Averaging over temporal dimension
-		avg = K.mean(inputs, axis=[1])
-		# And apply spatial pooling
-		output = K.pool2d(avg, pool_size, stride, border_mode,
-						  dim_ordering, pool_mode=self.spatial_pool_mode)
-		return output
+	# Averaging over temporal dimension
+	avg = K.mean(inputs, axis=[1])
+	# And apply spatial pooling
+	output = K.pool2d(avg, pool_size, stride, border_mode,
+                          dim_ordering, pool_mode=self.spatial_pool_mode)
+	return output
 
 
 class TemporalMaxPooling2D(_TemporalPooling2D):
@@ -193,18 +187,136 @@ class TemporalMaxPooling2D(_TemporalPooling2D):
 
     def __init__(self, pool_size=(2, 2), strides=None, border_mode='valid',
                  dim_ordering='default', spatial_pool_mode = 'avg', **kwargs):
-		self.spatial_pool_mode = spatial_pool_mode
+        self.spatial_pool_mode = spatial_pool_mode
         super(TemporalMaxPooling2D, self).__init__(pool_size, strides,
                                                        border_mode, dim_ordering,
                                                        **kwargs)
 
     def _pooling_function(self, inputs, pool_size, strides, 
                           border_mode, dim_ordering):
-		# Maximize over temporal dimension
-		m = K.max(inputs, axis=[1])
-		# And apply spatial pooling
-		output = K.pool2d(m, pool_size, stride, border_mode,
-						  dim_ordering, pool_mode=self.spatial_pool_mode)
-		return output
+        # Maximize over temporal dimension
+        m = K.max(inputs, axis=[1])
+        # And apply spatial pooling
+        output = K.pool2d(m, pool_size, stride, border_mode,
+                          dim_ordering, pool_mode=self.spatial_pool_mode)
+        return output
 
 
+class TemporalAverageGlobalPooling2D(_TemporalPooling2D):
+    """
+        Temporal average global pooling operation for spatial-temporal data.
+        This layer accept 5D input and will compute average pooling on feature
+        maps of the same channel at different time step and apply global spatial
+        pooling.
+
+        E.g. Input is:
+            t = 1           t = 2       ...     t = N
+            1|2|3           1|2|3               1|2|3
+        At each time step, the number of channel of input feature map is 3 
+        (1|2|3) and there are N steps.
+        Ouput will be:
+            1'|2'|3'
+        where x' = avg(x@t1 + x@t2 + ... + x@t_N)
+
+        # Arguments
+            dim_ordering:   'th' ot 'tf'.
+            keep_dims:       boolean, default False
+            spatial_pool_
+            mode:	    which kind of spatial pooling to use
+
+        # Input shape
+            5D tensor with shape:
+                'th'    B x T x C x H x W   |   'tf'    B x T x H x W x C
+        
+        # Output shape
+            If keep_dims is True:
+                5D tensor with shape B x C x 1 x 1 (th) or B x 1 x 1 x C (tf)
+            If keep_dims is False:
+                3D tensor with shape B x C
+    """
+
+    def __init__(self, spatial_pool_mode = 'avg', dim_ordering='default',
+                 keep_dims = False, **kwargs):
+        self.spatial_pool_mode = spatial_pool_mode
+        self.keep_dims = keep_dims
+        super(TemporalAverageGlobalPooling2D, self).__init__(dim_ordering, **kwargs)
+
+    def _pooling_function(self, inputs, pool_size, strides, 
+                          border_mode, dim_ordering):
+        # Averaging over temporal dimension
+        avg = K.mean(inputs, axis=[1])
+        # And apply spatial pooling
+        output = None
+        if self.spatial_pool_mode == 'avg':
+            if self.dim_ordering == 'tf':
+                output = K.mean(avg, axis=[1, 2], keep_dims=self.keep_dims)
+            else:
+                output = K.mean(avg, axis=[2, 3], keep_dims=self.keep_dims)
+        elif self.spatial_pool_mode == 'max':
+            if self.dim_ordering == 'tf':
+                output = K.max(avg, axis=[1, 2], keep_dims=self.keep_dims)
+            else:
+                output = K.max(avg, axis=[2, 3], keep_dims=self.keep_dims)
+        else:
+            raise NoImplementedError
+        return output
+
+
+class TemporalMaxGlobalPooling2D(_TemporalPooling2D):
+    """
+        Temporal max global pooling operation for spatial-temporal data.
+        This layer accept 5D input and will compute maximize pooling on feature
+        maps of the same channel at different time step and apply global spatial
+        pooling.
+
+        E.g. Input is:
+            t = 1           t = 2       ...     t = N
+            1|2|3           1|2|3               1|2|3
+        At each time step, the number of channel of input feature map is 3 
+        (1|2|3) and there are N steps.
+        Ouput will be:
+            1'|2'|3'
+        where x' = max(x@t1, x@t2, ..., x@t_N)
+
+        # Arguments
+            dim_ordering:   'th' ot 'tf'.
+            keep_dims:       boolean, default False
+            spatial_pool_
+            mode:	    which kind of spatial pooling to use
+
+        # Input shape
+            5D tensor with shape:
+                'th'    B x T x C x H x W   |   'tf'    B x T x H x W x C
+        
+        # Output shape
+            If keep_dims is True:
+                5D tensor with shape B x C x 1 x 1 (th) or B x 1 x 1 x C (tf)
+            If keep_dims is False:
+                3D tensor with shape B x C
+    """
+
+    def __init__(self, spatial_pool_mode = 'avg', dim_ordering='default',
+                 keep_dims = False, **kwargs):
+        self.spatial_pool_mode = spatial_pool_mode
+        self.keep_dims = keep_dims
+        super(TemporalMaxGlobalPooling2D, self).__init__(dim_ordering, **kwargs)
+
+    def _pooling_function(self, inputs, pool_size, strides, 
+                          border_mode, dim_ordering):
+        # Maximize over temporal dimension
+        m = K.max(inputs, axis=[1])
+        # And apply spatial pooling
+        output = None
+        if self.spatial_pool_mode == 'avg':
+            if self.dim_ordering == 'tf':
+                output = K.mean(m, axis=[1, 2], keep_dims=self.keep_dims)
+            else:
+                output = K.mean(m, axis=[2, 3], keep_dims=self.keep_dims)
+        elif self.spatial_pool_mode == 'max':
+            if self.dim_ordering == 'tf':
+                output = K.max(m, axis=[1, 2], keep_dims=self.keep_dims)
+            else:
+                output = K.max(m, axis=[2, 3], keep_dims=self.keep_dims)
+        else:
+            raise NoImplementedError
+        return output
