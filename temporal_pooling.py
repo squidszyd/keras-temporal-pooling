@@ -25,9 +25,11 @@ class _TemporalPooling2D(Layer):
         super(_TemporalPooling2D, self).__init__(**kwargs)
 
         if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
-        if dim_ordering not in {'tf', 'th'}:
+            self.dim_ordering = K.image_dim_ordering()
+        elif dim_ordering not in {'tf', 'th'}:
             raise ValueError('`dim_ordering` must be in {tf, th}.')
+        else:
+            self.dim_ordering = dim_ordering
 
         self.pool_size = tuple(pool_size)
         if strides is None:
@@ -38,7 +40,7 @@ class _TemporalPooling2D(Layer):
             raise ValueError('`border_mode` must be in {valid, same}.')
         self.border_mode = border_mode
 
-        self.input_spec = [InputSpec(ndim=4)]
+        self.input_spec = [InputSpec(ndim=5)]
 
     def get_output_shape_for(self, input_shape):
         if self.dim_ordering == 'th':
@@ -103,6 +105,7 @@ class TemporalAveragePooling2D(_TemporalPooling2D):
         where x' = avg(x@t1 + x@t2 + ... + x@t_N)
 
         # Arguments
+            spatial_pool    Whether to apply spatial pooling
             pool_size:      Tuple of 2 integers. Factors by which to downscale
                             (horizontal, vertical). For example, (2, 2) will
                             harve the spatial size.
@@ -123,21 +126,25 @@ class TemporalAveragePooling2D(_TemporalPooling2D):
             where H' = (H - PH + 2P) / SH + 1, W' = (W - PW + 2P) / SW + 1
     """
 
-    def __init__(self, pool_size=(2, 2), strides=None, border_mode='valid',
+    def __init__(self, spatial_pool=False, pool_size=(2, 2), strides=None, border_mode='valid',
             dim_ordering='default', spatial_pool_mode = 'avg', **kwargs):
         self.spatial_pool_mode = spatial_pool_mode
+        self.spatial_pool = spatial_pool
         super(TemporalAveragePooling2D, self).__init__(pool_size, strides,
                 border_mode, dim_ordering,
                 **kwargs)
 
-        def _pooling_function(self, inputs, pool_size, strides,
-                border_mode, dim_ordering):
-            # Averaging over temporal dimension
-            avg = K.mean(inputs, axis=[1])
-            # And apply spatial pooling
-            output = K.pool2d(avg, pool_size, stride, border_mode,
+    def _pooling_function(self, inputs, pool_size, strides, border_mode,
+            dim_ordering):
+        # Averaging over temporal dimension
+        avg = K.mean(inputs, axis=[1])
+        # And apply spatial pooling
+        if self.spatial_pool is True:
+            output = K.pool2d(avg, pool_size, strides, border_mode,
                     dim_ordering, pool_mode=self.spatial_pool_mode)
             return output
+        else:
+            return avg
 
 
 class TemporalMaxPooling2D(_TemporalPooling2D):
@@ -161,6 +168,7 @@ class TemporalMaxPooling2D(_TemporalPooling2D):
         where x' = max(x@t1, x@t2, ..., x@t_N)
 
         # Arguments
+            spatial_pool    Whether to apply spatial pooling
             pool_size:      Tuple of 2 integers. Factors by which to downscale
                             (horizontal, vertical). For example, (2, 2) will
                             harve the spatial size.
@@ -181,21 +189,25 @@ class TemporalMaxPooling2D(_TemporalPooling2D):
             where H' = (H - PH + 2P) / SH + 1, W' = (W - PW + 2P) / SW + 1
     """
 
-    def __init__(self, pool_size=(2, 2), strides=None, border_mode='valid',
+    def __init__(self, spatial_pool=False, pool_size=(2, 2), strides=None, border_mode='valid',
             dim_ordering='default', spatial_pool_mode = 'avg', **kwargs):
         self.spatial_pool_mode = spatial_pool_mode
+        self.spatial_pool = spatial_pool
         super(TemporalMaxPooling2D, self).__init__(pool_size, strides,
                 border_mode, dim_ordering,
                 **kwargs)
 
-        def _pooling_function(self, inputs, pool_size, strides,
-                border_mode, dim_ordering):
+    def _pooling_function(self, inputs, pool_size, strides, border_mode,
+            dim_ordering):
             # Maximize over temporal dimension
             m = K.max(inputs, axis=[1])
-            # And apply spatial pooling
-            output = K.pool2d(m, pool_size, stride, border_mode,
-                    dim_ordering, pool_mode=self.spatial_pool_mode)
-            return output
+            if self.spatial_pool is True:
+                # And apply spatial pooling
+                output = K.pool2d(m, pool_size, strides, border_mode,
+                        dim_ordering, pool_mode=self.spatial_pool_mode)
+                return output
+            else:
+                return m
 
 
 class TemporalAverageGlobalPooling2D(_TemporalPooling2D):
@@ -297,8 +309,8 @@ class TemporalMaxGlobalPooling2D(_TemporalPooling2D):
         self.keep_dims = keep_dims
         super(TemporalMaxGlobalPooling2D, self).__init__(dim_ordering, **kwargs)
 
-    def _pooling_function(self, inputs, pool_size, strides,
-            border_mode, dim_ordering):
+    def _pooling_function(self, inputs, pool_size, strides, border_mode,
+            dim_ordering):
         # Maximize over temporal dimension
         m = K.max(inputs, axis=[1])
         # And apply spatial pooling
